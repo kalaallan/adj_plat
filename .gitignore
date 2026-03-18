@@ -1,0 +1,35 @@
+# --- IDE / OS ---
+.vscode/
+.idea/
+*.swp
+*.DS_Store
+Thumbs.db
+
+# --- BACKEND (Spring Boot / Maven) ---
+backend/plat_back/target/
+backend/plat_back/.mvn/wrapper/maven-wrapper.jar
+backend/plat_back/.mvn/wrapper/maven-wrapper.properties
+# Si vous utilisez un fichier de config locale pour la DB
+backend/plat_back/src/main/resources/application-local.properties
+
+# --- FRONTEND (React / Vite / Node) ---
+frontend/plat_front/node_modules/
+frontend/plat_front/dist/
+frontend/plat_front/.env
+frontend/plat_front/.env.local
+frontend/plat_front/.env.development.local
+frontend/plat_front/.env.test.local
+frontend/plat_front/.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- DIVERS (Fichiers personnels présents dans votre dossier) ---
+*.pdf
+*.docx
+*.jpg
+*.png
+# Ignore spécifiquement le fichier SQL si c'est un dump local
+frontend/plat_front/bd.sql
