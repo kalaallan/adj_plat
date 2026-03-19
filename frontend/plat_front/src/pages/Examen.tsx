@@ -1,8 +1,24 @@
-import { useState } from "react";
-import Header from "../components/Header";
+import { useState, useEffect } from "react";
+import Header from "../components/header";
+import { getAllLangages } from "../services/ExamenService";
+import type { Langage } from "../types/Examen";
 
 const Examen = () => {
   const [formOpen, setFormOpen] = useState(false);
+  const [langages, setLangages] = useState<Langage[]>([]);
+
+  useEffect(() => {
+    const fetchLangages = async () => {
+      try {
+        const data = await getAllLangages();
+        setLangages(data);
+      } catch (error) {
+        console.error("Erreur chargement langages", error);
+      }
+    };
+
+    fetchLangages();
+  }, []);
 
   // état du formulaire
   const [formData, setFormData] = useState({
@@ -12,9 +28,11 @@ const Examen = () => {
     duree: "",
     consigne: "",
     sujet: "",
+    langage: "",
+    enseignant_id: ""
   });
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
@@ -112,6 +130,22 @@ const Examen = () => {
                   required
                 />
               </div>
+
+              {/* Select Langage */}
+              <select
+                name="langage"
+                value={formData.langage}
+                onChange={handleInputChange}
+                className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              >
+                <option value="">Choisir un langage</option>
+                {langages.map((lang) => (
+                  <option key={lang.id} value={lang.id}>
+                    {lang.nom}
+                  </option>
+                ))}
+              </select>
 
               <textarea
                 name="consigne"

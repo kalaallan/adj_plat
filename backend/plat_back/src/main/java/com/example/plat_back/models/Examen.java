@@ -44,10 +44,6 @@ public class Examen {
     @OneToMany(mappedBy = "examen")
     private Set<Superviseur> superviseurs;
 
-    // Historique des superviseurs
-    @ManyToMany(mappedBy = "examensSupervises")
-    private List<Superviseur> superviseursHistoriques;
-
     // Étudiants passés
     @ManyToMany(mappedBy = "examensPasses")
     private List<Etudiant> etudiantsPasses;

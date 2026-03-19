@@ -1,8 +1,23 @@
 import type {} from "react";
 import { NavLink } from "react-router-dom";
+import { logout } from "../store/slices/loginSlice";
+import { useAppDispatch } from "../store/hooks";
+import { persistor } from "../store";
 
 
 const Header = () => {
+  const dispatch = useAppDispatch();
+  
+  const handleLogout = async () => {
+    dispatch(logout());
+
+    await persistor.flush(); // assure que tout est écrit
+    localStorage.removeItem("persist:login"); // supprime uniquement login
+    // Logique de déconnexion (ex: clear token, rediriger vers login, etc.)
+    console.log("Déconnexion...");
+  }
+
+
   return (
     <header className="bg-white shadow-md rounded-md max-w-6xl mx-auto my-4">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -50,7 +65,10 @@ const Header = () => {
 
         {/* Logout */}
         <div>
-          <button className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition">
+          <button
+           onClick={handleLogout}
+           className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition"
+          >
             Logout
           </button>
         </div>

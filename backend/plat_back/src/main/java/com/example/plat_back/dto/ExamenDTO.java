@@ -13,6 +13,6 @@ public class ExamenDTO {
     private String nom;
     private String sujet;
     private StatutExamen statut;
-    private String enseignantId;
-    private String langageId;
+    private String enseignant;
+    private String langage;
 }

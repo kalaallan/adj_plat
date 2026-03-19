@@ -1,10 +1,18 @@
 package com.example.plat_back.service;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.example.plat_back.dto.ExamenDTO;
+import com.example.plat_back.dto.LangageDTO;
 import com.example.plat_back.models.Examen;
+import com.example.plat_back.models.Langage;
+import com.example.plat_back.repository.EnseignantRepository;
 import com.example.plat_back.repository.ExamenRepository;
+import com.example.plat_back.repository.LangageRepository;
 
 @Service
 public class ExamenService {
@@ -18,10 +26,21 @@ public class ExamenService {
     @Autowired
     private EnseignantRepository enseignantRepository;
 
-    public Examen createExamen(ExamenDTO dto) {
+    /**
+     * Crée un examen à partir d'un DTO et retourne le DTO sauvegardé.
+     * Langage et Enseignant sont obligatoires.
+     */
+    public ExamenDTO createExamen(ExamenDTO dto) {
 
         if (examenRepository.existsById(dto.getCodeEx())) {
             throw new RuntimeException("Examen déjà existant !");
+        }
+
+        if (dto.getLangage() == null) {
+            throw new RuntimeException("Le langage est obligatoire pour créer un examen.");
+        }
+        if (dto.getEnseignant() == null) {
+            throw new RuntimeException("L'enseignant est obligatoire pour créer un examen.");
         }
 
         Examen examen = new Examen();
@@ -35,21 +54,48 @@ public class ExamenService {
         examen.setSujet(dto.getSujet());
         examen.setStatut(dto.getStatut());
 
-        // 🔥 Mapping des relations
-        if (dto.getLangageId() != null) {
-            examen.setLangage(
-                langageRepository.findById(Long.parseLong(dto.getLangageId()))
-                    .orElseThrow(() -> new RuntimeException("Langage introuvable"))
-            );
-        }
+        // Mapping relation Langage
+        Langage langage = langageRepository.findById(dto.getLangage())
+                .orElseThrow(() -> new RuntimeException("Langage introuvable"));
+        examen.setLangage(langage);
 
-        if (dto.getEnseignantId() != null) {
-            examen.setEnseignant(
-                enseignantRepository.findById(dto.getEnseignantId())
-                    .orElseThrow(() -> new RuntimeException("Enseignant introuvable"))
-            );
-        }
+        // Mapping relation Enseignant
+        examen.setEnseignant(
+                enseignantRepository.findById(dto.getEnseignant())
+                        .orElseThrow(() -> new RuntimeException("Enseignant introuvable"))
+        );
 
-        return examenRepository.save(examen);
+        // Sauvegarde de l'examen
+        Examen saved = examenRepository.save(examen);
+
+        // Mapping retour : Examen -> ExamenDTO
+        ExamenDTO savedDTO = new ExamenDTO();
+        savedDTO.setCodeEx(saved.getCodeEx());
+        savedDTO.setNom(saved.getNom());
+        savedDTO.setMatiere(saved.getMatiere());
+        savedDTO.setDuree(saved.getDuree());
+        savedDTO.setConsigne(saved.getConsigne());
+        savedDTO.setSujet(saved.getSujet());
+        savedDTO.setStatut(saved.getStatut());
+        savedDTO.setLangage(saved.getLangage().getId());
+        savedDTO.setEnseignant(saved.getEnseignant().getId());
+
+        return savedDTO;
     }
+
+    public List<LangageDTO> getAllLangages() {
+
+        List<Langage> langages = langageRepository.findAll();
+
+        return langages.stream().map(lang -> {
+            LangageDTO dto = new LangageDTO();
+            dto.setId(lang.getId());
+            dto.setNom(lang.getNom());
+            dto.setExtension(lang.getExtension());
+            dto.setImageDocker(lang.getImageDocker());
+            dto.setCommandeExe(lang.getCommandeExe());
+            return dto;
+        }).collect(Collectors.toList());
+    }
+    
 }
