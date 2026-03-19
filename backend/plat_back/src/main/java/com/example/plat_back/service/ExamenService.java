@@ -31,7 +31,9 @@ public class ExamenService {
      * Langage et Enseignant sont obligatoires.
      */
     public ExamenDTO createExamen(ExamenDTO dto) {
-
+        if (dto.getNom() == null || dto.getCodeEx() == null) {
+            throw new IllegalArgumentException("Nom et codeEx sont obligatoires");
+        }
         if (examenRepository.existsById(dto.getCodeEx())) {
             throw new RuntimeException("Examen déjà existant !");
         }

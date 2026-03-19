@@ -1,12 +1,18 @@
 import { useState, useEffect } from "react";
 import Header from "../components/header";
-import { getAllLangages } from "../services/ExamenService";
-import type { Langage } from "../types/Examen";
+import { getAllLangages, createExamen, uploadSujet } from "../services/ExamenService";
+import type { Examen, Langage } from "../types/Examen";
+
+import { useAppSelector } from "../store/hooks";
+import type { RootState } from "../store";
+
 
 const Examen = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [langages, setLangages] = useState<Langage[]>([]);
-
+  const useSelector = useAppSelector;
+  const { utilisateur, role } = useSelector((state: RootState) => state.login);
+  
   useEffect(() => {
     const fetchLangages = async () => {
       try {
@@ -20,6 +26,15 @@ const Examen = () => {
     fetchLangages();
   }, []);
 
+  useEffect(() => {
+    if (utilisateur && role === "enseignant") {
+      setFormData((prev) => ({
+        ...prev,
+        enseignant: utilisateur.id 
+      }));
+    }
+  }, [utilisateur, role]);
+
   // état du formulaire
   const [formData, setFormData] = useState({
     codeEx: "",
@@ -27,9 +42,10 @@ const Examen = () => {
     matiere: "",
     duree: "",
     consigne: "",
-    sujet: "",
+    sujet: null as File | null,
+    statut: "CREER",
     langage: "",
-    enseignant_id: ""
+    enseignant: ""
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -40,10 +56,38 @@ const Examen = () => {
     setFormOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Form submitted:", formData);
-    // Ici tu peux appeler ton API backend
+
+    try {
+      if (!formData.sujet) {
+        throw new Error("Fichier requis");
+      }
+
+      // Upload
+      const fileUrl = await uploadSujet(formData.sujet);
+      console.log("Fichier uploadé à :", fileUrl);
+      // Préparer données
+      const examenData : Examen = {
+        codeEx: formData.codeEx,
+        nom: formData.nom,
+        matiere: formData.matiere,
+        duree: Number(formData.duree),
+        consigne: formData.consigne,
+        sujet: fileUrl, // URL
+        statut: formData.statut,
+        langage: formData.langage,
+        enseignant: formData.enseignant
+      };
+
+      // Create examen
+      await createExamen(examenData);
+      setFormOpen(false);
+      console.log(" Examen créé");
+
+    } catch (error) {
+      console.error(" Erreur :", error);
+    }
   };
 
   return (

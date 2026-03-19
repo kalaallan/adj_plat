@@ -5,3 +5,15 @@ export interface Langage {
   imageDocker: string;
   commandeExe: string;
 }
+
+export interface Examen {
+  codeEx: string;
+  nom: string;
+  matiere: string;
+  duree: number;
+  consigne: string;
+  statut: string;
+  sujet: string; // URL du sujet
+  langage: string;
+  enseignant: string;
+}
