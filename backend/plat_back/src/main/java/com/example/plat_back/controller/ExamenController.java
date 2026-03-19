@@ -68,4 +68,10 @@ public class ExamenController {
         List<LangageDTO> langages = examenService.getAllLangages();
         return ResponseEntity.ok(langages);
     }
+
+    @GetMapping("/allExamens")
+    public ResponseEntity<List<ExamenDTO>> getAllExamens() {
+        List<ExamenDTO> examens = examenService.getAllExamens();
+        return ResponseEntity.ok(examens);
+    }
 }

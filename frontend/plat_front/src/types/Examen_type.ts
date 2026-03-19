@@ -6,7 +6,7 @@ export interface Langage {
   commandeExe: string;
 }
 
-export interface Examen {
+export interface ExamenDto {
   codeEx: string;
   nom: string;
   matiere: string;

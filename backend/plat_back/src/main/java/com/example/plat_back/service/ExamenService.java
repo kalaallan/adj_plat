@@ -99,5 +99,22 @@ public class ExamenService {
             return dto;
         }).collect(Collectors.toList());
     }
+
+    public List<ExamenDTO> getAllExamens() {
+        List<Examen> examens = examenRepository.findAll();
+        return examens.stream().map(exam -> {
+            ExamenDTO dto = new ExamenDTO();
+            dto.setCodeEx(exam.getCodeEx());
+            dto.setNom(exam.getNom());
+            dto.setMatiere(exam.getMatiere());
+            dto.setDuree(exam.getDuree());
+            dto.setConsigne(exam.getConsigne());
+            dto.setSujet(exam.getSujet());
+            dto.setStatut(exam.getStatut());
+            dto.setLangage(exam.getLangage().getId());
+            dto.setEnseignant(exam.getEnseignant().getId());
+            return dto;
+        }).collect(Collectors.toList());
+    }
     
 }
