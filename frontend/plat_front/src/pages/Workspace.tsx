@@ -1,139 +1,139 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useState, useRef, type KeyboardEvent } from "react";
 import Header from "../components/header";
 import { useAppSelector } from "../store/hooks";
 import type { RootState } from "../store";
 import Editor from "@monaco-editor/react";
 import { useNavigate } from "react-router-dom";
-import { runStudentCode } from "../services/WorkspaceService"; // exécution classique
-import { Terminal } from "xterm";
-import "xterm/css/xterm.css";
-import { connectTerminal, sendTerminalData, disconnectTerminal } from "../services/TerminalService";
+import { useWorkspaceService } from "../services/WorkspaceService";
 
 const Workspace = () => {
-  const useSelector = useAppSelector;
-  const { role, utilisateur } = useSelector((state: RootState) => state.login);
-
-  const [code, setCode] = useState("// Écrivez votre code ici...");
-  const terminalRef = useRef<HTMLDivElement>(null);
-  const term = useRef<Terminal | undefined>(undefined);
-
   const navigate = useNavigate();
+  const { role, utilisateur } = useAppSelector((state: RootState) => state.login);
 
-  // Contenu selon rôle
-  const roleData = {
-    etudiant: {
-      title: "Bienvenue !",
-      subtitle: "Sélectionnez un examen et testez vos connaissances.",
-      color: "bg-blue-100",
-      hoverColor: "hover:bg-blue-200",
-      button: "Choisir un examen"
-    },
-    enseignant: {
-      title: "Bonjour Enseignant !",
-      subtitle: "Créez un nouvel examen facilement.",
-      color: "bg-green-100",
-      hoverColor: "hover:bg-green-200",
-      button: "Créer un examen"
-    },
-    superviseur: {
-      title: "Superviseur",
-      subtitle: "Choisissez un examen en cours pour le superviser.",
-      color: "bg-yellow-100",
-      hoverColor: "hover:bg-yellow-200",
-      button: "Superviser un examen"
+  const [code, setCode] = useState(`public class Main {
+    public static void main(String[] args) {
+        System.out.println("Hello World!");
+    }
+}`);
+  const [userInput, setUserInput] = useState(""); 
+
+  const { output, status, connect, runCode, sendInput, disconnect, clear } = useWorkspaceService();
+
+  // Ref pour éviter double connexion
+  const connected = useRef(false);
+
+  useEffect(() => {
+    if (!utilisateur?.id) return;
+
+    // On utilise uniquement la Ref locale. 
+    // Au rafraîchissement (F5), elle repasse à false, ce qui est BIEN 
+    // car on DOIT recréer le socket qui a été tué par le navigateur.
+    if (connected.current) return;
+
+    console.log("Rafraîchissement détecté : Reconnexion automatique...");
+    
+    connected.current = true;
+    connect("EX002", utilisateur.id, "2");
+
+    return () => {
+      // Quand on quitte la page ou qu'on rafraîchit
+      disconnect();
+      connected.current = false;
+    };
+  }, [utilisateur?.id, connect, disconnect]);
+
+  const navigationExamen = () => navigate("/Examen");
+
+  const handleRunCode = () => {
+    clear();
+    runCode(code);
+  };
+
+  const handleTerminalKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && userInput.trim() !== "") {
+      sendInput(userInput);
+      setUserInput("");
     }
   };
 
-  const currentRole = roleData[role as keyof typeof roleData] || roleData.etudiant;
-  const navigationExamen = () => navigate("/Examen");
-
-  // ✅ Bouton exécution rapide
-  const handleRunCode = async () => {
-    const result = await runStudentCode({
-      code,
-      examId: "EX002", // remplacer par examen sélectionné
-      studentId: utilisateur?.id ?? "unknown",
-      langageId: 2 // Java
-    });
-    term.current?.write(result + "\n"); // afficher dans le terminal interactif
+  const roleData = {
+    etudiant: { title: "Bienvenue !", subtitle: "Sélectionnez un examen et testez vos connaissances.", color: "bg-blue-50", button: "Choisir un examen" },
+    enseignant: { title: "Bonjour Enseignant !", subtitle: "Créez un nouvel examen facilement.", color: "bg-green-50", button: "Créer un examen" },
+    superviseur: { title: "Superviseur", subtitle: "Choisissez un examen en cours pour le superviser.", color: "bg-yellow-50", button: "Superviser un examen" }
   };
 
-  // ✅ Terminal interactif WebSocket
-  useEffect(() => {
-    term.current = new Terminal({ fontSize: 14 });
-    term.current.open(terminalRef.current!);
-
-    connectTerminal("EX002", utilisateur?.id ?? "unknown", (msg: string) => {
-      term.current?.write(msg);
-    });
-
-    term.current.onData((data: string) => sendTerminalData(data));
-
-    return () => {
-      disconnectTerminal();
-      term.current?.dispose();
-    };
-  }, [utilisateur]);
+  const currentRole = roleData[role as keyof typeof roleData] || roleData.etudiant;
 
   return (
     <>
       <Header />
-
-      <main className="max-w-7xl mx-auto px-6 py-16">
-        <div className="flex flex-col items-center justify-center gap-8">
-          <div className={`w-full md:w-2/3 p-10 rounded-2xl shadow-lg text-center transition ${currentRole.color} ${currentRole.hoverColor} cursor-pointer`}>
-            <h1 className="text-3xl md:text-4xl font-bold mb-4 text-gray-800">{currentRole.title}</h1>
-            <p className="text-gray-700 text-lg md:text-xl mb-6">{currentRole.subtitle}</p>
-            <button
-              onClick={navigationExamen}
-              className={`px-6 py-3 rounded-full font-semibold text-white transition ${
-                role === "etudiant" ? "bg-blue-500 hover:bg-blue-600" :
-                role === "enseignant" ? "bg-green-500 hover:bg-green-600" :
-                "bg-yellow-500 hover:bg-yellow-600"
-              }`}
-            >
-              {currentRole.button}
-            </button>
-          </div>
+      <main className="max-w-7xl mx-auto px-6 py-8 flex flex-col gap-6">
+        {/* Banner Rôle */}
+        <div className={`w-full md:w-3/4 p-6 rounded-2xl shadow-md text-center mx-auto ${currentRole.color} border border-gray-200`}>
+          <h1 className="text-2xl font-bold text-gray-800">{currentRole.title}</h1>
+          <p className="text-gray-600 mt-2 mb-4">{currentRole.subtitle}</p>
+          <button
+            onClick={navigationExamen}
+            className="px-6 py-2 rounded-lg bg-white font-semibold shadow hover:bg-gray-100 transition"
+          >
+            {currentRole.button}
+          </button>
         </div>
 
-        {/* Éditeur + Terminal */}
-        <div className="w-full mt-12 bg-white rounded-2xl shadow-xl overflow-hidden border">
-          <div className="flex flex-col md:flex-row h-150">
-
-            {/* Éditeur Monaco */}
-            <div className="w-full md:w-1/2 bg-gray-900 p-4 flex flex-col">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-white font-semibold">Éditeur</h2>
-                <span className="text-xs text-gray-400">Java</span>
+        {/* Workspace Container */}
+        <div className="w-full bg-gray-900 rounded-xl shadow-2xl overflow-hidden border border-gray-700 flex flex-col md:flex-row h-[700px]">
+          {/* Editor Panel */}
+          <div className="md:w-1/2 flex flex-col bg-gray-800 p-4">
+            <div className="flex justify-between items-center mb-3">
+              <div className="flex space-x-2">
+                <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
+                <span className="w-3 h-3 rounded-full bg-green-500"></span>
               </div>
-
-              <Editor
-                height="100%"
-                defaultLanguage="java"
-                value={code}
-                theme="vs-dark"
-                options={{ fontSize: 14, minimap: { enabled: false }, automaticLayout: true, scrollBeyondLastLine: false }}
-                onChange={(value) => setCode(value || "")}
-              />
-
+              <span className="text-xs font-mono text-gray-400">Main.java</span>
+            </div>
+            <Editor
+              height="100%"
+              defaultLanguage="java"
+              value={code}
+              theme="vs-dark"
+              options={{ fontSize: 14, minimap: { enabled: false }, automaticLayout: true, roundedSelection: true }}
+              onChange={(value) => setCode(value || "")}
+            />
+            <div className="mt-2 flex justify-between items-center">
+              <span className={`text-xs font-mono ${status === 'open' ? 'text-green-400' : 'text-red-500'}`}>
+                ● {status.toUpperCase()}
+              </span>
               <button
                 onClick={handleRunCode}
-                className="mt-4 px-6 py-2 rounded-full bg-purple-600/50 text-white font-semibold self-end hover:bg-purple-600"
+                disabled={status !== "open"}
+                className="px-6 py-2 bg-indigo-600 rounded-md font-bold text-white hover:bg-indigo-700 disabled:bg-gray-600 transition-shadow"
               >
-                Exécuter
+                RUN
               </button>
             </div>
+          </div>
 
-            {/* Terminal interactif */}
-            <div className="w-full md:w-1/2 bg-gray-100 p-4 flex flex-col">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-gray-700 font-semibold">Terminal</h2>
-                <span className="text-xs text-gray-500">Interactif</span>
-              </div>
-              <div ref={terminalRef} style={{ width: "100%", height: "500px", backgroundColor: "black" }} />
+          {/* Terminal Panel */}
+          <div className="md:w-1/2 flex flex-col bg-black p-4 border-l border-gray-700">
+            <div className="flex justify-between items-center mb-2 border-b border-gray-800 pb-1">
+              <h2 className="text-xs text-gray-400 font-mono uppercase tracking-widest">Output Console</h2>
+              <button onClick={clear} className="text-gray-500 hover:text-white text-xs">Clear</button>
             </div>
-
+            <div className="flex-1 w-full overflow-auto bg-black text-green-400 p-3 font-mono text-sm whitespace-pre-wrap rounded">
+              {output}
+            </div>
+            <div className="mt-3 flex items-center bg-gray-900 rounded px-3 py-2 border border-gray-700 focus-within:border-indigo-500">
+              <span className="text-green-500 mr-2">{'>'}</span>
+              <input
+                type="text"
+                value={userInput}
+                onChange={(e) => setUserInput(e.target.value)}
+                onKeyDown={handleTerminalKeyDown}
+                placeholder="Entrée utilisateur..."
+                className="bg-transparent border-none outline-none text-white w-full font-mono text-sm"
+              />
+            </div>
           </div>
         </div>
       </main>

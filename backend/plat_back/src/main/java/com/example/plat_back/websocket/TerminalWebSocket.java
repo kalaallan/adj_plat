@@ -2,9 +2,11 @@ package com.example.plat_back.websocket;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.springframework.stereotype.Component;
 
@@ -17,6 +19,7 @@ import com.example.plat_back.repository.LangageRepository;
 import com.example.plat_back.service.BeanUtil;
 
 import jakarta.websocket.OnClose;
+import jakarta.websocket.OnError;
 import jakarta.websocket.OnMessage;
 import jakarta.websocket.OnOpen;
 import jakarta.websocket.Session;
@@ -29,111 +32,127 @@ public class TerminalWebSocket {
 
     private Process process;
     private Session session;
+    private Path studentDir;
+    private Langage langage;
     private final String BASE_DIR = "D:/uploads/";
-
-    private ExamenRepository examRepository;
-    private EtudiantRepository studentRepository;
-    private LangageRepository langageRepository;
-
-    private String sanitize(String input) {
-        return input.trim().replaceAll("[^a-zA-Z0-9]", "_");
-    }
+    private final AtomicBoolean isRunning = new AtomicBoolean(false);
 
     @OnOpen
     public void onOpen(Session session,
                        @PathParam("examId") String examId,
                        @PathParam("studentId") String studentId,
-                       @PathParam("langageId") String langageId) throws IOException {
-
+                       @PathParam("langageId") String langageId) {
         this.session = session;
+        session.setMaxIdleTimeout(300000);
 
-        // Récupération des Beans via BeanUtil
-        this.examRepository = BeanUtil.getBean(ExamenRepository.class);
-        this.studentRepository = BeanUtil.getBean(EtudiantRepository.class);
-        this.langageRepository = BeanUtil.getBean(LangageRepository.class);
+        try {
+            // Récupération directe des ressources
+            ExamenRepository examRepo = BeanUtil.getBean(ExamenRepository.class);
+            EtudiantRepository studentRepo = BeanUtil.getBean(EtudiantRepository.class);
+            LangageRepository langRepo = BeanUtil.getBean(LangageRepository.class);
 
-        // Récupération des infos en Base
-        Examen exam = examRepository.findById(examId)
-                .orElseThrow(() -> new RuntimeException("Examen introuvable"));
-        Etudiant student = studentRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Étudiant introuvable"));
-        Langage langage = langageRepository.findById(langageId)
-                .orElseThrow(() -> new RuntimeException("Langage introuvable"));
+            this.langage = langRepo.findById(langageId).orElseThrow();
+            Examen exam = examRepo.findByIdWithDetails(examId).orElseThrow();
+            Etudiant student = studentRepo.findById(studentId).orElseThrow();
 
-        // Chemins sécurisés
-        String safeExam = sanitize(exam.getNom());
-        String safeStudent = sanitize(student.getNom() + "_" + student.getPrenom());
-        Path studentDir = Paths.get(BASE_DIR, safeExam, safeStudent);
-        Files.createDirectories(studentDir);
+            // Setup du dossier de travail
+            String safePath = sanitize(exam.getNom()) + "/" + sanitize(student.getNom() + "_" + student.getPrenom());
+            this.studentDir = Paths.get(BASE_DIR, safePath);
+            Files.createDirectories(studentDir);
 
-        // Vérification du fichier selon l'extension du langage
-        String fileName = "Main" + langage.getExtension(); // ex: Main.java
-        Path codeFile = studentDir.resolve(fileName);
-        
-        if (!Files.exists(codeFile)) {
-            this.session.getBasicRemote().sendText("Erreur : Fichier " + fileName + " introuvable.\n");
-            return;
+            sendToClient("Connecté.\n");
+        } catch (IOException | RuntimeException e) {
+            sendToClient("Erreur initialisation: " + e.getMessage());
         }
-
-        // Préparation Docker (Format Windows)
-        String absolutePath = studentDir.toAbsolutePath().toString().replace("\\", "/");
-        if (absolutePath.contains(":")) {
-            absolutePath = "/" + absolutePath.substring(0, 1).toLowerCase() + absolutePath.substring(2);
-        }
-
-        // Construction de la commande (Compilation && Exécution)
-        String compileCmd = langage.getCompile_cmd() != null ? langage.getCompile_cmd().replace("{filename}", fileName) : "";
-        String runCmd = langage.getRun_cmd().replace("{filename}", fileName);
-        if (langage.getNom().equalsIgnoreCase("Java")) runCmd = "java Main";
-        
-        String fullCmd = !compileCmd.isEmpty() ? compileCmd + " && " + runCmd : runCmd;
-
-        // Lancement Docker avec l'image et la commande de la DB
-        ProcessBuilder pb = new ProcessBuilder(
-            "docker", "run", "--rm", "-i",
-            "--network=none",
-            "-v", absolutePath + ":/code",
-            "-w", "/code",
-            langage.getImage_docker(),
-            "sh", "-c", fullCmd
-        );
-
-        pb.redirectErrorStream(true);
-        process = pb.start();
-
-        // Lecture du flux de sortie
-        new Thread(() -> {
-            try (InputStream in = process.getInputStream()) {
-                byte[] buffer = new byte[1024];
-                int n;
-                while ((n = in.read(buffer)) != -1) {
-                    String data = new String(buffer, 0, n);
-                    if (this.session.isOpen()) {
-                        session.getBasicRemote().sendText(data);
-                    }
-                }
-            } catch (IOException e) {
-                // Gestion fin de flux
-            } finally {
-                try { 
-                    if(session.isOpen()) session.getBasicRemote().sendText("\n[Processus terminé]\n"); 
-                } catch(Exception e){}
-            }
-        }).start();
     }
 
     @OnMessage
     public void onMessage(String message) throws IOException {
+        // Redirection vers STDIN si le process tourne
         if (process != null && process.isAlive()) {
-            process.getOutputStream().write((message + "\n").getBytes());
-            process.getOutputStream().flush();
+            OutputStream os = process.getOutputStream();
+            os.write((message + "\n").getBytes());
+            os.flush();
+            return;
         }
+        executeCode(message);
+    }
+
+    private void executeCode(String sourceCode) {
+        if (isRunning.getAndSet(true)) return;
+
+        try {
+            // Préparation fichier
+            if (langage.getExtension().equalsIgnoreCase(".java")) {
+                sourceCode = sourceCode.replaceAll("package\\s+[a-zA-Z0-9.]+;", "");
+            }
+            String fileName = "Main" + langage.getExtension();
+            Files.writeString(studentDir.resolve(fileName), sourceCode);
+
+            // Conversion chemin pour Docker (Windows -> Linux style)
+            String dockerPath = studentDir.toAbsolutePath().toString().replace("\\", "/");
+            if (dockerPath.contains(":")) {
+                dockerPath = "/" + dockerPath.substring(0, 1).toLowerCase() + dockerPath.substring(2);
+            }
+
+            ProcessBuilder pb = new ProcessBuilder(
+                "docker", "run", "--rm", "-i", "--network=none", "--memory", "128m",
+                "-v", dockerPath + ":/code", "-w", "/code",
+                langage.getImage_docker(), "sh", "-c", buildCommand(fileName)
+            );
+
+            pb.redirectErrorStream(true);
+            process = pb.start();
+
+            // Thread de lecture simplifié
+            new Thread(this::readProcessOutput).start();
+
+        } catch (IOException | RuntimeException e) {
+            isRunning.set(false);
+            sendToClient("Erreur: " + e.getMessage());
+        }
+    }
+
+    private void readProcessOutput() {
+        try (InputStream in = process.getInputStream()) {
+            byte[] buffer = new byte[1024];
+            int n;
+            while ((n = in.read(buffer)) != -1) {
+                sendToClient(new String(buffer, 0, n, java.nio.charset.StandardCharsets.UTF_8));
+            }
+        } catch (IOException | RuntimeException e) {
+        } finally {
+            isRunning.set(false);
+            sendToClient("\n[Terminé]\n");
+        }
+    }
+
+    private synchronized void sendToClient(String text) {
+        try {
+            if (session != null && session.isOpen()) {
+                session.getBasicRemote().sendText(text);
+            }
+        } catch (IOException | RuntimeException e) {}
     }
 
     @OnClose
     public void onClose() {
-        if (process != null) {
-            process.destroyForcibly();
-        }
+        if (process != null) process.destroyForcibly();
+    }
+
+    @OnError
+    public void onError(Session s, Throwable t) {
+        // Plus besoin de logs complexes ici si le front gère bien la fermeture
+    }
+
+    private String sanitize(String s) {
+        return s.trim().replaceAll("[^a-zA-Z0-9]", "_");
+    }
+
+    private String buildCommand(String fileName) {
+        String run = langage.getRun_cmd().replace("{filename}", fileName);
+        String compile = langage.getCompile_cmd();
+        if (compile == null || compile.isBlank()) return run;
+        return compile.replace("{filename}", fileName) + " && " + run;
     }
 }
