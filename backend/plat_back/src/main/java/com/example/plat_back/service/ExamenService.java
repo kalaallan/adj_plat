@@ -94,8 +94,9 @@ public class ExamenService {
             dto.setId(lang.getId());
             dto.setNom(lang.getNom());
             dto.setExtension(lang.getExtension());
-            dto.setImageDocker(lang.getImageDocker());
-            dto.setCommandeExe(lang.getCommandeExe());
+            dto.setImage_docker(lang.getImage_docker());
+            dto.setCompile_cmd(lang.getCompile_cmd());
+            dto.setRun_cmd(lang.getRun_cmd());
             return dto;
         }).collect(Collectors.toList());
     }

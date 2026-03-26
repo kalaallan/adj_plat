@@ -1,0 +1,43 @@
+✅ Interface (fait)
+
+Workspace gauche/droite, layout propre et responsive
+
+✅ Intégration éditeur (Monaco)
+
+Support Java, coloration syntaxique, autocomplétion
+
+✅ Gestion du langage
+
+Fixe (Java pour commencer)
+
+Peut évoluer vers sélection multi-langages
+
+⚠️ Backend compilateur
+
+Initialement simple (Spring Boot ou Node.js)
+
+Reçoit le code, compile et exécute
+
+🔒 Sécurisation avec Docker (nouveau)
+
+Chaque exécution dans un conteneur isolé
+
+Limite CPU/RAM
+
+Timeout pour éviter boucles infinies
+
+✅ Affichage des résultats
+
+Résultat du code renvoyé au frontend (console / iframe)
+
+✅ Connexion avec l’examen
+
+Récupération id examen, consignes, langue autorisée
+
+Frontend prêt à coder et soumettre
+
+🔒 Sauvegarde code (plus tard)
+
+Enregistrement automatique
+
+Stockage par étudiant et examen

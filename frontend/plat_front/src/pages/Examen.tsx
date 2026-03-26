@@ -152,6 +152,7 @@ const Examen = () => {
       // Create examen
       await createExamen(examenData);
       setFormOpen(false);
+      alert("Examen créé avec succès !");
       console.log(" Examen créé");
     } catch (error) {
       console.error(" Erreur :", error);
