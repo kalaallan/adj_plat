@@ -117,5 +117,23 @@ public class ExamenService {
             return dto;
         }).collect(Collectors.toList());
     }
+
+    public ExamenDTO getExamenById(String codeEx) {
+        Examen exam = examenRepository.findById(codeEx)
+                .orElseThrow(() -> new RuntimeException("Examen introuvable"));
+
+        ExamenDTO dto = new ExamenDTO();
+        dto.setCodeEx(exam.getCodeEx());
+        dto.setNom(exam.getNom());
+        dto.setMatiere(exam.getMatiere());
+        dto.setDuree(exam.getDuree());
+        dto.setConsigne(exam.getConsigne());
+        dto.setSujet(exam.getSujet());
+        dto.setStatut(exam.getStatut());
+        dto.setLangage(exam.getLangage().getId());
+        dto.setEnseignant(exam.getEnseignant().getId());
+
+        return dto;
+    }
     
 }

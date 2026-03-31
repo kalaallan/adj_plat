@@ -12,14 +12,17 @@ import type { RootState } from "../store";
 import { getAllExamens } from "../services/ExamenService";
 import { getEnseignants } from "../services/UserService";
 import type { Enseignant } from "../types/User_type";
+import { useNavigate } from "react-router-dom";
 
 const Examen = () => {
+  const [selectedExam, setSelectedExam] = useState<ExamenDto | null>(null);
   const [examens, setExamens] = useState<ExamenDto[]>([]);
   const [enseignants, setEnseignants] = useState<Enseignant[]>([]);
   const [loading, setLoading] = useState(true);
   const [langages, setLangages] = useState<Langage[]>([]);
   const useSelector = useAppSelector;
   const { utilisateur, role } = useSelector((state: RootState) => state.login);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -78,6 +81,10 @@ const Examen = () => {
   // Fonction pour récupérer le nom de l'enseignant
   const getNomEnseignant = (id: string) => enseignantsMap[id] || "Inconnu";
 
+  const examenChoisi = (examen: ExamenDto) => {
+    setSelectedExam(examen);
+  };
+
   const renderExamens = (
     statut: string,
     buttonLabel: string,
@@ -105,7 +112,7 @@ const Examen = () => {
 
           <button
             className={`w-full ${buttonColor} text-white font-semibold py-2 rounded-lg transition hover:opacity-90`}
-            onClick={() => alert(`${onClickMsg} : ${examen.nom}`)}
+            onClick={() => examenChoisi(examen)}
           >
             {buttonLabel}
           </button>
@@ -167,7 +174,44 @@ const Examen = () => {
   return (
     <>
       <Header />
+      {selectedExam && (
+      <div className="fixed inset-0 flex items-center justify-center z-50 bg-[rgba(0,0,0,0.2)] backdrop-blur-sm">
+        <div className="bg-white rounded-xl p-8 w-full max-w-md shadow-lg text-center">
+          
+          <h2 className="text-xl font-bold mb-4">
+            Prêt à commencer ?
+          </h2>
 
+          <p className="text-gray-600 mb-3">
+            L'examen <span className="font-semibold">{selectedExam.nom}</span> va démarrer.
+            <br />
+            ⏱️ Durée : <span className="font-semibold">{selectedExam.duree} minutes</span>
+            <br />
+            Le temps commencera immédiatement.
+          </p>
+          <p className="text-sm text-gray-500 mt-1 mb-5">
+            Fin estimée :{" "}
+            {new Date(Date.now() + selectedExam.duree * 60000).toLocaleTimeString()}
+          </p>
+
+          <div className="flex gap-4">
+            <button
+              className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 rounded-lg"
+              onClick={() => setSelectedExam(null)}
+            >
+              Annuler
+            </button>
+
+            <button
+              className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg"
+              onClick={() => navigate(`/Workspace/${selectedExam.codeEx}`)}
+            >
+              Commencer
+            </button>
+          </div>
+        </div>
+      </div>
+      )}
       <main className="max-w-7xl mx-auto px-6 py-10">
         <h1 className="text-3xl font-bold mb-8">Gestion des examens</h1>
 

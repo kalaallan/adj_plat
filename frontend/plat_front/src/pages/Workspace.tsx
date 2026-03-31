@@ -1,21 +1,26 @@
-import { useEffect, useState, useRef, type KeyboardEvent } from "react";
+import { useEffect, useState, useRef } from "react";
 import Header from "../components/header";
 import { useAppSelector } from "../store/hooks";
 import type { RootState } from "../store";
-import Editor from "@monaco-editor/react";
-import { useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useWorkspaceService } from "../services/WorkspaceService";
+import type { ExamenDto } from "../types/Examen_type";
+import { getExamenById } from "../services/ExamenService";
+import TerminalComponent from "../components/TerminalComponent";
 
 const Workspace = () => {
-  const navigate = useNavigate();
+  const { examId } = useParams<{ examId: string }>();
   const { role, utilisateur } = useAppSelector((state: RootState) => state.login);
+  const [examSelect, setExamSelect] = useState<ExamenDto | null>(null);
+  const navigate = useNavigate();
 
+  const [model, setModel] = useState<boolean>(false); 
+  const [alerts, setAlerts] = useState<string[]>([]);
   const [code, setCode] = useState(`public class Main {
     public static void main(String[] args) {
         System.out.println("Hello World!");
     }
-}`);
-  const [userInput, setUserInput] = useState(""); 
+  }`);
 
   const { output, status, connect, runCode, sendInput, disconnect, clear } = useWorkspaceService();
 
@@ -23,119 +28,147 @@ const Workspace = () => {
   const connected = useRef(false);
 
   useEffect(() => {
-    if (!utilisateur?.id) return;
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        const message = `Changement d'onglet détecté à ${new Date().toLocaleTimeString()}`;
+        
+        console.warn(message);
 
-    // On utilise uniquement la Ref locale. 
-    // Au rafraîchissement (F5), elle repasse à false, ce qui est BIEN 
-    // car on DOIT recréer le socket qui a été tué par le navigateur.
-    if (connected.current) return;
+        setAlerts((prev) => [...prev, message]);
+      }
+    };
 
-    console.log("Rafraîchissement détecté : Reconnexion automatique...");
-    
-    connected.current = true;
-    connect("EX002", utilisateur.id, "2");
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      // Quand on quitte la page ou qu'on rafraîchit
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!utilisateur?.id || !examId) {
+      navigate("/Examen");
+      return;
+    }
+    if (connected.current) return;
+
+    const setupConnection = async () => {
+      try {
+        console.log("Rafraîchissement détecté : Reconnexion automatique...");
+        console.log("Utilisateur ID:", utilisateur.id, "Exam ID:", examId);
+        // Récupération de l'examen pour obtenir le langage
+        const examen: ExamenDto = await getExamenById(examId);
+        console.log("Examen récupéré :", examen);
+        const langageId = examen?.langage || "2"; // "2" = fallback Java
+        setExamSelect(examen);
+        connected.current = true;
+        connect(examId, utilisateur.id, langageId);
+      } catch (error) {
+        console.error("Erreur lors de la récupération de l'examen :", error);
+        // fallback si échec
+        connect(examId, utilisateur.id, "2");
+        connected.current = true;
+      }
+    };
+
+    setupConnection();
+
+    return () => {
       disconnect();
       connected.current = false;
     };
-  }, [utilisateur?.id, connect, disconnect]);
+  }, [utilisateur?.id, connect, disconnect, examId, navigate]);
 
-  const navigationExamen = () => navigate("/Examen");
 
   const handleRunCode = () => {
     clear();
     runCode(code);
   };
 
-  const handleTerminalKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && userInput.trim() !== "") {
-      sendInput(userInput);
-      setUserInput("");
-    }
-  };
-
   const roleData = {
-    etudiant: { title: "Bienvenue !", subtitle: "Sélectionnez un examen et testez vos connaissances.", color: "bg-blue-50", button: "Choisir un examen" },
-    enseignant: { title: "Bonjour Enseignant !", subtitle: "Créez un nouvel examen facilement.", color: "bg-green-50", button: "Créer un examen" },
-    superviseur: { title: "Superviseur", subtitle: "Choisissez un examen en cours pour le superviser.", color: "bg-yellow-50", button: "Superviser un examen" }
+    etudiant: { title: `${examSelect?.nom}`, subtitle: `${examSelect?.consigne}`, duree: `${examSelect?.duree}`, alerts: alerts, color: "bg-blue-50", button: "Abandonner" },
+    enseignant: { title: "Bonjour Enseignant !", subtitle: "Créez un nouvel examen facilement.", duree: `${examSelect?.duree}`, alerts: alerts, color: "bg-green-50", button: "Arrêter la supervision" },
+    superviseur: { title: "Superviseur", subtitle: "Choisissez un examen en cours pour le superviser.", duree: `${examSelect?.duree}`, alerts: alerts, color: "bg-yellow-50", button: "Arrêter la supervision  " }
   };
 
   const currentRole = roleData[role as keyof typeof roleData] || roleData.etudiant;
 
+  const abandonnerExamen = () => {
+    setModel(false);
+    navigate("/examen");
+  };
+
   return (
     <>
       <Header />
+      {model && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-[rgba(0,0,0,0.2)] backdrop-blur-sm">
+          <div className="bg-white rounded-xl p-8 w-full max-w-md shadow-lg text-center">
+            
+            <h2 className="text-xl font-bold mb-4">
+              Abandonner
+            </h2>
+
+            {role === "etudiant" ? (
+              <p className="text-gray-600 mb-4">
+                Voulez-vous vraiment abandonner l'examen ?
+                <br />
+                Votre progression ne sera pas sauvegardée.
+              </p>
+            ) : (
+              <p className="text-gray-600 mb-4">
+                Voulez-vous vraiment arrêter la supervision ?
+              </p>
+            )}
+
+            <div className="flex gap-4">
+              <button
+                className="flex-1 bg-gray-300 hover:bg-gray-400 py-2 rounded-lg"
+                onClick={() => setModel(false)}
+              >
+                Annuler
+              </button>
+
+              <button
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg"
+                onClick={(abandonnerExamen)}
+              >
+                Abandonner
+              </button>
+            </div>
+          </div>
+        </div>
+        )
+      }
+
       <main className="max-w-7xl mx-auto px-6 py-8 flex flex-col gap-6">
         {/* Banner Rôle */}
         <div className={`w-full md:w-3/4 p-6 rounded-2xl shadow-md text-center mx-auto ${currentRole.color} border border-gray-200`}>
           <h1 className="text-2xl font-bold text-gray-800">{currentRole.title}</h1>
-          <p className="text-gray-600 mt-2 mb-4">{currentRole.subtitle}</p>
+          <p className="text-gray-600 mt-2 mb-2">{currentRole.subtitle}</p>
+          <p className="text-gray-600 mt-2 mb-4">Durée : {currentRole.duree} min</p>
+          {currentRole.alerts.length > 0 && (
+            <p className="text-red-600 mt-2 mb-4">Alert : {currentRole.alerts}</p>
+          )}
           <button
-            onClick={navigationExamen}
             className="px-6 py-2 rounded-lg bg-white font-semibold shadow hover:bg-gray-100 transition"
+            onClick={() => setModel(true)}
           >
             {currentRole.button}
           </button>
         </div>
-
-        {/* Workspace Container */}
-        <div className="w-full bg-gray-900 rounded-xl shadow-2xl overflow-hidden border border-gray-700 flex flex-col md:flex-row h-[700px]">
-          {/* Editor Panel */}
-          <div className="md:w-1/2 flex flex-col bg-gray-800 p-4">
-            <div className="flex justify-between items-center mb-3">
-              <div className="flex space-x-2">
-                <span className="w-3 h-3 rounded-full bg-red-500"></span>
-                <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
-                <span className="w-3 h-3 rounded-full bg-green-500"></span>
-              </div>
-              <span className="text-xs font-mono text-gray-400">Main.java</span>
-            </div>
-            <Editor
-              height="100%"
-              defaultLanguage="java"
-              value={code}
-              theme="vs-dark"
-              options={{ fontSize: 14, minimap: { enabled: false }, automaticLayout: true, roundedSelection: true }}
-              onChange={(value) => setCode(value || "")}
-            />
-            <div className="mt-2 flex justify-between items-center">
-              <span className={`text-xs font-mono ${status === 'open' ? 'text-green-400' : 'text-red-500'}`}>
-                ● {status.toUpperCase()}
-              </span>
-              <button
-                onClick={handleRunCode}
-                disabled={status !== "open"}
-                className="px-6 py-2 bg-indigo-600 rounded-md font-bold text-white hover:bg-indigo-700 disabled:bg-gray-600 transition-shadow"
-              >
-                RUN
-              </button>
-            </div>
-          </div>
-
-          {/* Terminal Panel */}
-          <div className="md:w-1/2 flex flex-col bg-black p-4 border-l border-gray-700">
-            <div className="flex justify-between items-center mb-2 border-b border-gray-800 pb-1">
-              <h2 className="text-xs text-gray-400 font-mono uppercase tracking-widest">Output Console</h2>
-              <button onClick={clear} className="text-gray-500 hover:text-white text-xs">Clear</button>
-            </div>
-            <div className="flex-1 w-full overflow-auto bg-black text-green-400 p-3 font-mono text-sm whitespace-pre-wrap rounded">
-              {output}
-            </div>
-            <div className="mt-3 flex items-center bg-gray-900 rounded px-3 py-2 border border-gray-700 focus-within:border-indigo-500">
-              <span className="text-green-500 mr-2">{'>'}</span>
-              <input
-                type="text"
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                onKeyDown={handleTerminalKeyDown}
-                placeholder="Entrée utilisateur..."
-                className="bg-transparent border-none outline-none text-white w-full font-mono text-sm"
-              />
-            </div>
-          </div>
-        </div>
+        {/* Terminal */}
+        {(examId != null) && (
+          <TerminalComponent
+            code={code}
+            setCode={setCode}
+            output={output}
+            status={status}
+            runCode={handleRunCode}
+            sendInput={sendInput}
+            clear={clear}
+          />
+        )}
       </main>
     </>
   );

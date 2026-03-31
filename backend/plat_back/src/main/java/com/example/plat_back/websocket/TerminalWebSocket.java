@@ -43,7 +43,7 @@ public class TerminalWebSocket {
                        @PathParam("studentId") String studentId,
                        @PathParam("langageId") String langageId) {
         this.session = session;
-        session.setMaxIdleTimeout(300000);
+        session.setMaxIdleTimeout(0);
 
         try {
             // Récupération directe des ressources

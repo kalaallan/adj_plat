@@ -49,3 +49,13 @@ export const createExamen = async (examenData: ExamenDto): Promise<void> => {
     throw error;
   }
 };
+
+export const getExamenById = async (codeEx: string): Promise<ExamenDto> => {
+  try {
+    const response = await axios.get<ExamenDto>(`${API_URL}obtExamen/${codeEx}`);
+    return response.data;
+  } catch (error) {
+    console.error("Erreur en récupérant l'examen :", error);
+    throw error;
+  }
+};

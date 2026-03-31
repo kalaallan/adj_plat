@@ -19,7 +19,7 @@ const App = () => {
           </ProtectedRoute>
         } />
 
-        <Route path="/Workspace" element={
+        <Route path="/Workspace/:examId" element={
         <ProtectedRoute>
           <Workspace />
         </ProtectedRoute>
