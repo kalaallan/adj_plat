@@ -7,6 +7,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Component;
 
@@ -25,13 +27,16 @@ import jakarta.websocket.OnOpen;
 import jakarta.websocket.Session;
 import jakarta.websocket.server.PathParam;
 import jakarta.websocket.server.ServerEndpoint;
+import java.util.Map;
 
-@ServerEndpoint(value = "/ws/terminal/{examId}/{studentId}/{langageId}")
+@ServerEndpoint(value = "/ws/terminal/{examId}/{userId}/{langageId}/{role}")
 @Component
 public class TerminalWebSocket {
 
     private Process process;
     private Session session;
+    private static final Map<String, Session> studentSessions = new ConcurrentHashMap<>();
+    private static final Map<String, java.util.List<Session>> examSupervisors = new ConcurrentHashMap<>();
     private Path studentDir;
     private Langage langage;
     private final String BASE_DIR = "D:/uploads/";
@@ -39,46 +44,142 @@ public class TerminalWebSocket {
 
     @OnOpen
     public void onOpen(Session session,
-                       @PathParam("examId") String examId,
-                       @PathParam("studentId") String studentId,
-                       @PathParam("langageId") String langageId) {
+                    @PathParam("examId") String examId,
+                    @PathParam("userId") String userId,
+                    @PathParam("langageId") String langageId,
+                    @PathParam("role") String role) {
+
         this.session = session;
         session.setMaxIdleTimeout(0);
 
+        // Stocker les infos dans la session
+        session.getUserProperties().put("examId", examId);
+        session.getUserProperties().put("userId", userId);
+        session.getUserProperties().put("role", role);
+
+        // Enregistrer session
+        if ("etudiant".equals(role)) {
+            studentSessions.put(userId, session);
+        } else if ("superviseur".equals(role)) {
+            examSupervisors
+                .computeIfAbsent(examId, k -> new CopyOnWriteArrayList<>())
+                .add(session);
+        }
+
         try {
-            // Récupération directe des ressources
             ExamenRepository examRepo = BeanUtil.getBean(ExamenRepository.class);
             EtudiantRepository studentRepo = BeanUtil.getBean(EtudiantRepository.class);
             LangageRepository langRepo = BeanUtil.getBean(LangageRepository.class);
 
             this.langage = langRepo.findById(langageId).orElseThrow();
             Examen exam = examRepo.findByIdWithDetails(examId).orElseThrow();
-            Etudiant student = studentRepo.findById(studentId).orElseThrow();
 
-            // Setup du dossier de travail
-            String safePath = sanitize(exam.getNom()) + "/" + sanitize(student.getNom() + "_" + student.getPrenom());
-            this.studentDir = Paths.get(BASE_DIR, safePath);
-            Files.createDirectories(studentDir);
+            // seulement si étudiant
+            if ("etudiant".equals(role)) {
+                Etudiant student = studentRepo.findById(userId).orElseThrow();
 
-            sendToClient("Connecté.\n");
-        } catch (IOException | RuntimeException e) {
-            sendToClient("Erreur initialisation: " + e.getMessage());
+                String safePath = sanitize(exam.getNom()) + "/" +
+                        sanitize(student.getNom() + "_" + student.getPrenom());
+
+                this.studentDir = Paths.get(BASE_DIR, safePath);
+                Files.createDirectories(studentDir);
+            }
+
+            sendToClient("{\"type\":\"OUTPUT\",\"message\":\"Connecté\\n\"}");
+
+        } catch (IOException e) {
+            sendToClient("{\"type\":\"ERROR\",\"message\":\"Init error\"}");
         }
     }
 
     @OnMessage
-    public void onMessage(String message) throws IOException {
-        // Redirection vers STDIN si le process tourne
-        if (process != null && process.isAlive()) {
-            OutputStream os = process.getOutputStream();
-            os.write((message + "\n").getBytes());
-            os.flush();
-            return;
+    public void onMessage(String message) {
+        try {
+            // Parser JSON
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            Map<String, Object> data = mapper.readValue(
+                message,
+                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}
+            );
+
+            String type = (String) data.get("type");
+
+            switch (type) {
+                case "CODE" -> executeCode((String) data.get("data"));
+                case "INPUT" -> {
+                    if (process != null && process.isAlive()) {
+                        OutputStream os = process.getOutputStream();
+                        os.write((data.get("data") + "\n").getBytes());
+                        os.flush();
+                    }
+                }
+                case "ALERT" -> {
+                    String role = (String) session.getUserProperties().get("role");
+                    if ("etudiant".equals(role)) {
+                        handleAlert(data.get("data"));
+                    }
+                }
+                default -> sendToClient("{\"type\":\"ERROR\",\"message\":\"Type inconnu\"}");
+            }
+
+        } catch (IOException | RuntimeException e) {
+            sendToClient("{\"type\":\"ERROR\",\"message\":\"Erreur parsing JSON\"}");
         }
-        executeCode(message);
+    }
+
+    private void handleAlert(Object alertData) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
+            String examId = (String) session.getUserProperties().get("examId");
+            String userId = (String) session.getUserProperties().get("userId");
+
+            // récupérer étudiant
+            EtudiantRepository studentRepo = BeanUtil.getBean(EtudiantRepository.class);
+            Etudiant student = studentRepo.findById(userId).orElse(null);
+
+            String fullName = (student != null)
+                    ? student.getNom() + " " + student.getPrenom()
+                    : "Inconnu";
+
+            String json = mapper.writeValueAsString(
+                Map.of(
+                    "type", "ALERT",
+                    "message", alertData,
+                    "etudiant", fullName
+                )
+            );
+
+            // envoyer à l'étudiant
+            sendToClient(json);
+
+            // envoyer aux superviseurs
+            var supervisors = examSupervisors.get(examId);  
+
+            if (supervisors != null) {
+                for (Session supSession : supervisors) {
+                    if (supSession.isOpen()) {
+                        supSession.getBasicRemote().sendText(json);
+                    }
+                }
+            }
+
+            System.out.println("ALERT envoyée : " + json);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private void executeCode(String sourceCode) {
+
+        String role = (String) session.getUserProperties().get("role");
+
+        if (!"etudiant".equals(role) || studentDir == null) {
+            sendToClient("{\"type\":\"ERROR\",\"message\":\"Accès refusé\"}");
+            return;
+        }
+
         if (isRunning.getAndSet(true)) return;
 
         try {
@@ -118,13 +219,23 @@ public class TerminalWebSocket {
             byte[] buffer = new byte[1024];
             int n;
             while ((n = in.read(buffer)) != -1) {
-                sendToClient(new String(buffer, 0, n, java.nio.charset.StandardCharsets.UTF_8));
+                sendToClient(
+                    "{\"type\":\"OUTPUT\",\"message\":\"" 
+                    + escape(new String(buffer, 0, n)) 
+                    + "\"}"
+                );
             }
         } catch (IOException | RuntimeException e) {
         } finally {
             isRunning.set(false);
             sendToClient("\n[Terminé]\n");
         }
+    }
+
+    private String escape(String text) {
+        return text.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n");
     }
 
     private synchronized void sendToClient(String text) {
@@ -138,6 +249,17 @@ public class TerminalWebSocket {
     @OnClose
     public void onClose() {
         if (process != null) process.destroyForcibly();
+
+        String role = (String) session.getUserProperties().get("role");
+        String userId = (String) session.getUserProperties().get("userId");
+        String examId = (String) session.getUserProperties().get("examId");
+
+        if ("etudiant".equals(role)) {
+            studentSessions.remove(userId);
+        } else if ("superviseur".equals(role)) {
+            var list = examSupervisors.get(examId);
+            if (list != null) list.remove(session);
+        }
     }
 
     @OnError
