@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -31,24 +32,59 @@ public class ExamenController {
     private ExamenService examenService;
 
     // Endpoint pour uploader un fichier PDF
-    @PostMapping("/upload")
-    public ResponseEntity<String> uploadSujet(@RequestParam("file") MultipartFile file) {
+    @PostMapping("/upload/{nomExamen}")
+    public ResponseEntity<String> uploadSujet(
+            @RequestParam("file") MultipartFile file,
+            @PathVariable String nomExamen) {
+
         try {
-            // Dossier persistant
-            String folder = "D:/uploads/";
-            Path path = Paths.get(folder + file.getOriginalFilename());
+            // Base uploads
+            String baseFolder = "D:/uploads/";
 
-            // Sauvegarde du fichier sur le disque
-            Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
+            // Créer dossier examen si n'existe pas
+            Path examenFolder = Paths.get(baseFolder, nomExamen);
+            if (!Files.exists(examenFolder)) {
+                Files.createDirectories(examenFolder);
+            }
 
-            // URL à stocker dans la BDD
-            String url = "/uploads/" + file.getOriginalFilename();
+            // Créer sous-dossier sujet si n'existe pas
+            Path sujetFolder = examenFolder.resolve("sujet");
+            if (!Files.exists(sujetFolder)) {
+                Files.createDirectories(sujetFolder);
+            }
 
-            return ResponseEntity.ok(url);
+            // Chemin complet du fichier
+            Path filePath = sujetFolder.resolve(file.getOriginalFilename());
+
+            // Sauvegarde du fichier
+            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+            // Retourner le chemin relatif à stocker en BDD
+            String relativePath = nomExamen + "/sujet/" + file.getOriginalFilename();
+
+            return ResponseEntity.ok(relativePath);
 
         } catch (IOException e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Upload failed");
+        }
+    }
+
+    @GetMapping("/sujet/{nomExamen}/{filename}")
+    public ResponseEntity<byte[]> downloadSujet(
+            @PathVariable String nomExamen,
+            @PathVariable String filename) {
+        try {
+            Path path = Paths.get("D:/uploads/", nomExamen, "sujet", filename);
+            byte[] fileBytes = Files.readAllBytes(path);
+
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                    .body(fileBytes);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null);
         }
     }
 
@@ -84,6 +120,20 @@ public class ExamenController {
         } catch (Exception e) {
             e.printStackTrace();
             System.out.println("Erreur getExamenById pour id=" + id + ": " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+
+    @PutMapping("/updateStatut/{id}")
+    public ResponseEntity<ExamenDTO> updateStatut(
+            @PathVariable String id,
+            @RequestParam String statut) {
+
+        try {
+            ExamenDTO updated = examenService.updateStatut(id, statut);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
     }

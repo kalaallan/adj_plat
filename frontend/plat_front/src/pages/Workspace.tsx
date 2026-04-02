@@ -12,6 +12,7 @@ const Workspace = () => {
   const { examId } = useParams<{ examId: string }>();
   const { role, utilisateur } = useAppSelector((state: RootState) => state.login);
   const [examSelect, setExamSelect] = useState<ExamenDto | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number>(0);
   const navigate = useNavigate();
 
   const [model, setModel] = useState(false);
@@ -39,6 +40,7 @@ const Workspace = () => {
     const setupConnection = async () => {
       try {
         const examen: ExamenDto = await getExamenById(examId);
+        setTimeLeft((examen.duree || 0) * 60); // en secondes
         setExamSelect(examen);
         const langageId = examen?.langage || "2"; // fallback Java
         connected.current = true;
@@ -59,6 +61,22 @@ const Workspace = () => {
     };
   }, [examId, utilisateur?.id, connect, disconnect, navigate, role]);
 
+  useEffect(() => {
+    if (timeLeft <= 0) return;
+
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => prev - 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timeLeft]);
+
+  const formatTime = (seconds: number) => {
+    const min = Math.floor(seconds / 60);
+    const sec = seconds % 60;
+    return `${min} : ${sec.toString().padStart(2, "0")}`;
+  };
+
   // --- Gestion du code ---
   const handleRunCode = () => {
     clear();
@@ -70,7 +88,7 @@ const Workspace = () => {
     etudiant: {
       title: `${examSelect?.nom}`,
       subtitle: `${examSelect?.consigne}`,
-      duree: `${examSelect?.duree}`,
+      duree: formatTime(timeLeft),
       alerts,
       color: "bg-blue-50",
       button: "Abandonner"
@@ -86,7 +104,7 @@ const Workspace = () => {
     superviseur: {
       title: "Superviseur",
       subtitle: "Choisissez un examen en cours pour le superviser.",
-      duree: `${examSelect?.duree}`,
+      duree: formatTime(timeLeft),
       alerts,
       color: "bg-yellow-50",
       button: "Arrêter la supervision"
@@ -139,7 +157,20 @@ const Workspace = () => {
         >
           <h1 className="text-2xl font-bold text-gray-800">{currentRole.title}</h1>
           <p className="text-gray-600 mt-2 mb-2">{currentRole.subtitle}</p>
-          <p className="text-gray-600 mt-2 mb-4">Durée : {currentRole.duree} min</p>
+          <div className="flex justify-center items-center mb-4">
+            <div
+              className={`px-6 py-3 rounded-full text-lg font-bold shadow-md transition-all
+                ${
+                  timeLeft > 900
+                    ? "bg-green-100 text-green-700"
+                    : timeLeft > 300
+                    ? "bg-orange-100 text-orange-600"
+                    : "bg-red-100 text-red-600 animate-pulse"
+                }`}
+            >
+              ⏱️ {formatTime(timeLeft)}
+            </div>
+          </div>
           {currentRole.alerts.length > 0 && (
             <p className="text-red-600 mt-2 mb-4">
               Alert : {currentRole.alerts.map(a => a.message).join(", ")}

@@ -10,6 +10,7 @@ import com.example.plat_back.dto.ExamenDTO;
 import com.example.plat_back.dto.LangageDTO;
 import com.example.plat_back.models.Examen;
 import com.example.plat_back.models.Langage;
+import com.example.plat_back.models.StatutExamen;
 import com.example.plat_back.repository.EnseignantRepository;
 import com.example.plat_back.repository.ExamenRepository;
 import com.example.plat_back.repository.LangageRepository;
@@ -134,6 +135,53 @@ public class ExamenService {
         dto.setEnseignant(exam.getEnseignant().getId());
 
         return dto;
+    }
+
+    public ExamenDTO updateStatut(String id, String statut) {
+
+        Examen examen = examenRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Examen introuvable"));
+
+        // Conversion String → Enum
+        StatutExamen newStatut = StatutExamen.valueOf(statut.toUpperCase());
+
+        // OPTION 🔒 (recommandé) : contrôler le workflow
+        if (!isTransitionValide(examen.getStatut(), newStatut)) {
+            throw new RuntimeException("Transition de statut invalide");
+        }
+
+        examen.setStatut(newStatut);
+
+        examenRepository.save(examen);
+
+        return convertToDTO(examen);
+    }
+
+    private ExamenDTO convertToDTO(Examen exam) {
+        ExamenDTO dto = new ExamenDTO();
+        dto.setCodeEx(exam.getCodeEx());
+        dto.setNom(exam.getNom());
+        dto.setMatiere(exam.getMatiere());
+        dto.setDuree(exam.getDuree());
+        dto.setConsigne(exam.getConsigne());
+        dto.setSujet(exam.getSujet());
+        dto.setStatut(exam.getStatut());
+        dto.setLangage(exam.getLangage().getId());
+        dto.setEnseignant(exam.getEnseignant().getId());
+        return dto;
+    }
+
+    private boolean isTransitionValide(StatutExamen actuel, StatutExamen nouveau) {
+
+        if (actuel == StatutExamen.CREER && nouveau == StatutExamen.ENCOURS) {
+            return true;
+        }
+
+        if (actuel == StatutExamen.ENCOURS && nouveau == StatutExamen.TERMINER) {
+            return true;
+        }
+
+        return false;
     }
     
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Header from "../components/header";
 import {
   getAllLangages,
@@ -11,10 +11,12 @@ import { useAppSelector } from "../store/hooks";
 import type { RootState } from "../store";
 import { getAllExamens } from "../services/ExamenService";
 import { getEnseignants } from "../services/UserService";
+import { putExamenStatus } from "../services/ExamenService";
 import type { Enseignant } from "../types/User_type";
 import { useNavigate } from "react-router-dom";
 
 const Examen = () => {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedExam, setSelectedExam] = useState<ExamenDto | null>(null);
   const [examens, setExamens] = useState<ExamenDto[]>([]);
   const [enseignants, setEnseignants] = useState<Enseignant[]>([]);
@@ -141,7 +143,7 @@ const Examen = () => {
       }
 
       // Upload
-      const fileUrl = await uploadSujet(formData.sujet);
+      const fileUrl = await uploadSujet(formData.sujet, formData.nom);
       console.log("Fichier uploadé à :", fileUrl);
       // Préparer données
       const examenData: ExamenDto = {
@@ -169,6 +171,20 @@ const Examen = () => {
   const handleCorrectionClick = () => {
     setFormOpen(false);
     setOpenExamens(true);
+  };
+
+  const examenSelectionner = async (examen: ExamenDto) => {
+    try {
+      await putExamenStatus(examen.codeEx, "ENCOURS");
+
+      console.log("Statut de l'examen mis à jour avec succès");
+
+      navigate(`/Workspace/${examen.codeEx}`);
+
+    } catch (error) {
+      console.error("Erreur en mettant à jour le statut de l'examen :", error);
+      alert("Une erreur est survenue. Veuillez réessayer.");
+    }
   };
 
   return (
@@ -204,7 +220,7 @@ const Examen = () => {
 
             <button
               className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg"
-              onClick={() => navigate(`/Workspace/${selectedExam.codeEx}`)}
+              onClick={() => examenSelectionner(selectedExam)}
             >
               Commencer
             </button>
@@ -275,7 +291,7 @@ const Examen = () => {
 
         {/* Formulaire centré */}
         {formOpen && role === "enseignant" && (
-          <div className="mt-10 flex justify-center">
+          <div className="mt-10 flex ">
             <form
               onSubmit={handleSubmit}
               className="w-full max-w-5xl bg-white p-8 rounded-lg shadow-lg space-y-4"
@@ -294,15 +310,20 @@ const Examen = () => {
                 required
               />
 
+              {/* Nom de l'examen */}
               <input
                 type="text"
                 name="nom"
                 placeholder="Nom de l'examen"
                 value={formData.nom}
                 onChange={handleInputChange}
-                className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
+                  formData.sujet ? "bg-gray-100 cursor-not-allowed text-gray-500" : ""
+                }`}
                 required
+                disabled={!!formData.sujet}
               />
+
 
               {/* Matière et Durée sur la même ligne */}
               <div className="flex gap-4">
@@ -351,21 +372,47 @@ const Examen = () => {
                 required
               />
 
-              {/* Sujet (PDF uniquement) */}
-              <div>
+              {/* Upload sujet */}
+              <div className="mt-4">
                 <label className="block mb-1 font-medium">Sujet (PDF)</label>
                 <input
                   type="file"
                   name="sujet"
                   accept=".pdf"
+                  ref={fileInputRef} // <-- ajout de la ref
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                     if (e.target.files && e.target.files[0]) {
                       setFormData({ ...formData, sujet: e.target.files[0] });
                     }
                   }}
-                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
+                    !formData.nom ? "bg-gray-100 cursor-not-allowed text-gray-500" : ""
+                  }`}
+                  disabled={!formData.nom}
                   required
                 />
+
+                {!formData.nom && (
+                  <p className="text-sm text-red-500 mt-1">
+                    Saisissez d'abord le nom de l'examen pour pouvoir uploader le sujet.
+                  </p>
+                )}
+
+                {formData.sujet && (
+                  <div className="mt-2 flex items-center justify-between bg-gray-100 rounded-lg px-3 py-2">
+                    <span className="truncate">{formData.sujet.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({ ...formData, sujet: null });
+                        if (fileInputRef.current) fileInputRef.current.value = ""; // <-- reset du champ
+                      }}
+                      className="text-red-500 font-semibold ml-2"
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Boutons */}

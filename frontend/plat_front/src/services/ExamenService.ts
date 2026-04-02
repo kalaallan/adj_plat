@@ -23,18 +23,19 @@ export const getAllExamens = async (): Promise<ExamenDto[]> => {
   }
 };
 
-export const uploadSujet = async (file: File): Promise<string> => {
+export const uploadSujet = async (file: File, nomExamen: string): Promise<string> => {
   try {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await axios.post<string>(`${API_URL}upload`, formData, {
+    // On envoie le nom de l'examen dans l'URL
+    const response = await axios.post<string>(`${API_URL}upload/${encodeURIComponent(nomExamen)}`, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
     });
 
-    return response.data; // "/uploads/xxx.pdf"
+    return response.data; // ex: "nomExamen/sujet/xxx.pdf"
   } catch (error) {
     console.error("Erreur upload fichier :", error);
     throw error;
@@ -56,6 +57,15 @@ export const getExamenById = async (codeEx: string): Promise<ExamenDto> => {
     return response.data;
   } catch (error) {
     console.error("Erreur en récupérant l'examen :", error);
+    throw error;
+  }
+};
+
+export const putExamenStatus = async (codeEx: string, statut: string): Promise<void> => {
+  try {
+    await axios.put(`${API_URL}updateStatut/${codeEx}?statut=${statut}`);
+  } catch (error) {
+    console.error("Erreur en mettant à jour le statut de l'examen :", error);
     throw error;
   }
 };
